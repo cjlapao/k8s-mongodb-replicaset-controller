@@ -1,139 +1,158 @@
-'use strict';
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : new P(function (resolve) { resolve(result.value); }).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
-var __generator = (this && this.__generator) || function (thisArg, body) {
-    var _ = { label: 0, sent: function() { if (t[0] & 1) throw t[1]; return t[1]; }, trys: [], ops: [] }, f, y, t, g;
-    return g = { next: verb(0), "throw": verb(1), "return": verb(2) }, typeof Symbol === "function" && (g[Symbol.iterator] = function() { return this; }), g;
-    function verb(n) { return function (v) { return step([n, v]); }; }
-    function step(op) {
-        if (f) throw new TypeError("Generator is already executing.");
-        while (_) try {
-            if (f = 1, y && (t = op[0] & 2 ? y["return"] : op[0] ? y["throw"] || ((t = y["return"]) && t.call(y), 0) : y.next) && !(t = t.call(y, op[1])).done) return t;
-            if (y = 0, t) op = [op[0] & 2, t.value];
-            switch (op[0]) {
-                case 0: case 1: t = op; break;
-                case 4: _.label++; return { value: op[1], done: false };
-                case 5: _.label++; y = op[1]; op = [0]; continue;
-                case 7: op = _.ops.pop(); _.trys.pop(); continue;
-                default:
-                    if (!(t = _.trys, t = t.length > 0 && t[t.length - 1]) && (op[0] === 6 || op[0] === 2)) { _ = 0; continue; }
-                    if (op[0] === 3 && (!t || (op[1] > t[0] && op[1] < t[3]))) { _.label = op[1]; break; }
-                    if (op[0] === 6 && _.label < t[1]) { _.label = t[1]; t = op; break; }
-                    if (t && _.label < t[2]) { _.label = t[2]; _.ops.push(op); break; }
-                    if (t[2]) _.ops.pop();
-                    _.trys.pop(); continue;
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.Config = void 0;
+const common_1 = require("./common");
+const dns_1 = require("dns");
+const util_1 = require("util");
+class Config {
+    constructor() {
+        this.isClusterVerified = false;
+    }
+    get debug() {
+        return common_1.Common.stringToBool(process.env.MONGO_DEBUG || '');
+    }
+    get k8sKubeConfig() {
+        return process.env.KUBERNETES_KUBECONFIG || '';
+    }
+    get k8sNamespace() {
+        return process.env.KUBERNETES_NAMESPACE || '';
+    }
+    get k8sClusterDomain() {
+        return this.getK8sClusterDomain();
+    }
+    get k8sROServiceAddress() {
+        return this.getK8sRoServiceAddress();
+    }
+    get k8sMongoServiceName() {
+        return this.getK8sMongoServiceName();
+    }
+    get k8sMongoPodLabels() {
+        return process.env.KUBERNETES_POD_LABELS;
+    }
+    get mongoPort() {
+        return this.getMongoPort();
+    }
+    get mongoDatabase() {
+        return process.env.MONGO_DATABASE || 'local';
+    }
+    get mongoUsername() {
+        return process.env.MONGO_USERNAME;
+    }
+    get mongoPassword() {
+        return process.env.MONGO_PASSWORD;
+    }
+    get mongoAuthSource() {
+        return process.env.MONGO_AUTH_SOURCE || 'admin';
+    }
+    get authMechanism() {
+        return process.env.MONGO_AUTH_MECHANISM || 'SCRAM-SHA-1';
+    }
+    get mongoSSL() {
+        return common_1.Common.stringToBool(process.env.MONGO_SSL || '');
+    }
+    get mongoTLS() {
+        return common_1.Common.stringToBool(process.env.MONGO_TLS || '');
+    }
+    get mongoTLSCA() {
+        return process.env.MONGO_TLS_CA;
+    }
+    get mongoTLSCert() {
+        return process.env.MONGO_TLS_CERT;
+    }
+    get mongoTLSKey() {
+        return process.env.MONGO_TLS_KEY;
+    }
+    get mongoTLSPassword() {
+        return process.env.MONGO_TLS_PASS;
+    }
+    get mongoTLSCRL() {
+        return process.env.MONGO_TLS_CRL;
+    }
+    get mongoTLSServerIdentityCheck() {
+        return common_1.Common.stringToBool(process.env.MONGO_TLS_IDENTITY_CHECK || '');
+    }
+    get loopSleepSeconds() {
+        let result = 5;
+        if (process.env.SIDECAR_SLEEP_SECONDS) {
+            result = Number.parseInt(process.env.SIDECAR_SLEEP_SECONDS, 10);
+            if (!result || result < 0) {
+                result = 5;
             }
-            op = body.call(thisArg, _);
-        } catch (e) { op = [6, e]; y = 0; } finally { f = t = 0; }
-        if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
-    }
-};
-var _this = this;
-var dns = require('dns');
-var promisify = require('util').promisify;
-var getK8sROServiceAddress = function () { return process.env.KUBERNETES_SERVICE_HOST + ":" + process.env.KUBERNETES_SERVICE_PORT; };
-/**
- * @returns k8sClusterDomain should the name of the kubernetes domain where the cluster is running.
- * Can be convigured via the environmental variable 'KUBERNETES_CLUSTER_DOMAIN'.
- */
-var getK8sClusterDomain = function () {
-    var domain = process.env.KUBERNETES_CLUSTER_DOMAIN || 'cluster.local';
-    verifyCorrectnessOfDomain(domain);
-    return domain;
-};
-/**
- * Calls a reverse DNS lookup to ensure that the given custom domain name matches the actual one.
- * Raises a console warning if that is not the case.
- * @param clusterDomain the domain to verify.
- */
-var verifyCorrectnessOfDomain = function (clusterDomain) { return __awaiter(_this, void 0, void 0, function () {
-    var servers, reverse, host, err_1;
-    return __generator(this, function (_a) {
-        switch (_a.label) {
-            case 0:
-                if (!clusterDomain)
-                    return [2 /*return*/];
-                servers = dns.getServers();
-                if (!servers || !servers.length) {
-                    console.warn('dns.getServers() didn\'t return any results when verifying the cluster domain \'%s\'.', clusterDomain);
-                    return [2 /*return*/];
-                }
-                _a.label = 1;
-            case 1:
-                _a.trys.push([1, 3, , 4]);
-                reverse = promisify(dns.reverse);
-                return [4 /*yield*/, reverse(servers[0])];
-            case 2:
-                host = _a.sent();
-                if (host.length < 1 || !host[0].endsWith(clusterDomain)) {
-                    console.warn('Possibly wrong cluster domain name! Detected \'%s\' but expected similar to \'%s\'', clusterDomain, host);
-                }
-                else {
-                    console.info('The cluster domain \'%s\' was successfully verified.', clusterDomain);
-                }
-                return [3 /*break*/, 4];
-            case 3:
-                err_1 = _a.sent();
-                console.warn('Error occurred trying to verify the cluster domain \'%s\'', clusterDomain);
-                return [3 /*break*/, 4];
-            case 4: return [2 /*return*/];
         }
-    });
-}); };
-/**
- * @returns k8sMongoServiceName should be the name of the (headless) k8s service operating the mongo pods.
- */
-var getK8sMongoServiceName = function () { return process.env.KUBERNETES_SERVICE_NAME || 'mongo'; };
-/**
- * @returns mongoPort this is the port on which the mongo instances run. Default is 27017.
- */
-var getMongoPort = function () {
-    var mongoPort = process.env.MONGO_PORT || 27017;
-    console.info('Using mongo port: %s', mongoPort);
-    return mongoPort;
-};
-/**
- *  @returns boolean to define the RS as a configsvr or not. Default is false
- */
-var isConfigRS = function () {
-    var configSvr = (process.env.MONGO_CONFIG_SVR || '').trim().toLowerCase();
-    var configSvrBool = /^(?:y|yes|true|1)$/i.test(configSvr);
-    if (configSvrBool) {
-        console.info('ReplicaSet is configured as a configsvr');
+        return result;
     }
-    return configSvrBool;
-};
-/**
- * @returns boolean
- */
-var stringToBool = function (boolStr) { return (boolStr === 'true') || false; };
-module.exports = {
-    k8sNamespace: process.env.KUBERNETES_NAMESPACE,
-    k8sClusterDomain: getK8sClusterDomain(),
-    k8sROServiceAddress: getK8sROServiceAddress(),
-    k8sMongoServiceName: getK8sMongoServiceName(),
-    k8sMongoPodLabels: process.env.KUBERNETES_POD_LABELS,
-    mongoPort: getMongoPort(),
-    mongoDatabase: process.env.MONGO_DATABASE || 'local',
-    mongoUsername: process.env.MONGO_USERNAME,
-    mongoPassword: process.env.MONGO_PASSWORD,
-    mongoAuthSource: process.env.MONGO_AUTH_SOURCE || 'admin',
-    authMechanism: process.env.MONGO_AUTH_MECHANISM || 'SCRAM-SHA-1',
-    mongoTLS: stringToBool(process.env.MONGO_TLS),
-    mongoTLSCA: process.env.MONGO_TLS_CA,
-    mongoTLSCert: process.env.MONGO_TLS_CERT,
-    mongoTLSKey: process.env.MONGO_TLS_KEY,
-    mongoTLSPassword: process.env.MONGO_TLS_PASS,
-    mongoTLSCRL: process.env.MONGO_TLS_CRL,
-    mongoTLSServerIdentityCheck: stringToBool(process.env.MONGO_TLS_IDENTITY_CHECK),
-    loopSleepSeconds: process.env.SIDECAR_SLEEP_SECONDS || 5,
-    unhealthySeconds: process.env.SIDECAR_UNHEALTHY_SECONDS || 15,
-    env: process.env.NODE_ENV || 'local',
-    isConfigRS: isConfigRS(),
-};
+    get unhealthySeconds() {
+        let result = 15;
+        if (process.env.SIDECAR_UNHEALTHY_SECONDS) {
+            result = Number.parseInt(process.env.SIDECAR_UNHEALTHY_SECONDS, 10);
+            if (!result || result < 0) {
+                result = 15;
+            }
+        }
+        return result;
+    }
+    get env() {
+        return process.env.NODE_ENV || 'local';
+    }
+    get isConfigRS() {
+        return this.isConfigRs();
+    }
+    getK8sRoServiceAddress() {
+        return `${process.env.KUBERNETES_SERVICE_HOST}:${process.env.KUBERNETES_SERVICE_PORT}`;
+    }
+    getK8sClusterDomain() {
+        const domain = process.env.KUBERNETES_CLUSTER_DOMAIN || 'cluster.local';
+        this.verifyClusterDomain(domain);
+        return domain;
+    }
+    async verifyClusterDomain(clusterDomain) {
+        if (!clusterDomain)
+            return;
+        if (this.isClusterVerified)
+            return;
+        const servers = dns_1.getServers();
+        if (!servers || !servers.length) {
+            console.warn(`dns: Didn't find any result when verifying the cluster domain ${clusterDomain}`);
+        }
+        try {
+            const dnsReverse = util_1.promisify(dns_1.reverse);
+            const host = await dnsReverse(servers[0]);
+            if (host.length < 1 || !host[0].endsWith(clusterDomain)) {
+                console.warn(`Possibly wrong cluster domain name! Detected ${clusterDomain} but expected similar to ${host}`);
+            }
+            else {
+                console.info(`The cluster domain ${clusterDomain} was successfully verified.`);
+            }
+        }
+        catch (err) {
+            console.warn(`Error occurred trying to verify the cluster domain ${clusterDomain}`);
+        }
+        return;
+    }
+    getK8sMongoServiceName() {
+        let serviceName = process.env.KUBERNETES_SERVICE_NAME;
+        if (!serviceName) {
+            console.info(`No service was defined, using default "mongo" as the name`);
+            serviceName = 'mongo';
+        }
+        return serviceName;
+    }
+    getMongoPort() {
+        let mongoPort = process.env.MONGO_PORT;
+        if (!mongoPort) {
+            console.info(`No port was defined, using mongo default 27017 as the port`);
+            mongoPort = '27017';
+        }
+        console.info('Using mongo port: %s', mongoPort);
+        return mongoPort;
+    }
+    isConfigRs() {
+        const configSvr = common_1.Common.stringToBool(process.env.MONGO_CONFIG_SVR || '');
+        if (configSvr) {
+            console.info('ReplicaSet is configured as a configsvr');
+        }
+        return configSvr;
+    }
+}
+exports.Config = Config;
+//# sourceMappingURL=config.js.map

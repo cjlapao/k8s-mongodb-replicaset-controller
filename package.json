@@ -22,10 +22,13 @@
   "main": "src/index.js",
   "scripts": {
     "build": "rimraf ./build && tsc",
-    "start": "tsc && node src/index.js",
+    "build-docker": "docker build --tag cjlapao/mongodb-sidecar:latest .",
+    "publish-docker": "docker push cjlapao/mongodb-sidecar:latest",
+    "start": "node src/index.js",
     "lint": "eslint .",
     "pretest": "npm run lint",
-    "test": "echo \"No tests\""
+    "test": "echo \"No tests\"",
+    "publish": "npm run build && npm run build-docker && npm run publish-docker"
   },
   "keywords": [
     "kubernetes",
@@ -39,18 +42,22 @@
   ],
   "prettier": {
     "tabWidth": 2,
-    "singleQuote": true
+    "singleQuote": true,
+    "printWidth": 120
   },
   "devDependencies": {
     "@types/luxon": "0.5.2",
+    "@types/node": "12.12.2",
     "@typescript-eslint/eslint-plugin": "3.8.0",
     "eslint": "7.6.0",
     "prettier": "2.0.5",
     "rimraf": "^3.0.2",
     "tslint": "6.1.3",
-    "typescript": "3.4.3"
+    "typescript": "3.9.7"
   },
   "dependencies": {
+    "@types/mongodb": "3.5.25",
+    "@kubernetes/client-node": "^0.12.0",
     "ip": "^1.1.5",
     "kubernetes-client": "^9.0.0",
     "luxon": "1.24.1",

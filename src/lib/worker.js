@@ -8,7 +8,7 @@ const { DateTime } = require('luxon');
 const ip = require('ip');
 
 const mongo = require('./mongo');
-const k8s = require('./k8s');
+const k8s = require('./k8s_old');
 const config = require('./config');
 
 const loopSleepSeconds = config.loopSleepSeconds;
@@ -44,9 +44,7 @@ const workloop = async () => {
   }
 
   if (!config.k8sMongoServiceName) {
-    throw new Error(
-      'You need to have a Headless Service to connect the replication service'
-    );
+    throw new Error('You need to have a Headless Service to connect the replication service');
   }
 
   console.log(hostIp);
@@ -73,9 +71,7 @@ const workloop = async () => {
   }
 
   if (!pods.length) {
-    return finish(
-      'No pods are currently running, probably just give them some time.'
-    );
+    return finish('No pods are currently running, probably just give them some time.');
   }
 
   // connecting to the selected database
@@ -90,9 +86,7 @@ const workloop = async () => {
         }
         break;
       default:
-        console.log(
-          `ReplicaSet is initiated and healthy, found ${status.members.length} node in replica members`
-        );
+        console.log(`ReplicaSet is initiated and healthy, found ${status.members.length} node in replica members`);
         break;
     }
     // await inReplicaSet(db, pods, status);
@@ -153,9 +147,7 @@ const electMasterPod = (pods) => {
     if (aDate > bDate) return 1;
     return 0; // Shouldn't get here... all pods should have different dates
   });
-  console.log(
-    `${pods[0].metadata.name} -> ${pods[0].metadata.creationTimestamp}`
-  );
+  console.log(`${pods[0].metadata.name} -> ${pods[0].metadata.creationTimestamp}`);
   return getPodAddress(pods[0]);
 };
 
@@ -197,14 +189,7 @@ const getPodIpAddressAndPort = (pod) => {
  * @returns string the k8s MongoDB stable network address, or undefined.
  */
 const getPodStableNetworkAddressAndPort = (pod) => {
-  if (
-    !config.k8sMongoServiceName ||
-    !pod ||
-    !pod.metadata ||
-    !pod.metadata.name ||
-    !pod.metadata.namespace
-  )
-    return;
+  if (!config.k8sMongoServiceName || !pod || !pod.metadata || !pod.metadata.name || !pod.metadata.namespace) return;
 
   return `${pod.metadata.name}.${config.k8sMongoServiceName}.${pod.metadata.namespace}.svc.${config.k8sClusterDomain}:${config.mongoPort}`;
 };
@@ -273,12 +258,9 @@ const notInReplicaSet = async (db, pods) => {
     if (electMasterPod(pods)) {
       console.info('Pod has been elected for replica set initialization');
       const primary = pods[0]; // After the sort election, the 0-th pod should be the primary.
-      const primaryStableNetworkAddressAndPort = getPodStableNetworkAddressAndPort(
-        primary
-      );
+      const primaryStableNetworkAddressAndPort = getPodStableNetworkAddressAndPort(primary);
       // Prefer the stable network ID over the pod IP, if present.
-      const primaryAddressAndPort =
-        primaryStableNetworkAddressAndPort || hostIpAndPort;
+      const primaryAddressAndPort = primaryStableNetworkAddressAndPort || hostIpAndPort;
       return mongo.initReplSet(db, primaryAddressAndPort);
     }
 
@@ -350,9 +332,7 @@ const addrToRemoveLoop = (members) => {
 };
 
 const memberShouldBeRemoved = (member) =>
-  !member.health &&
-  DateTime.local().minus({ seconds: unhealthySeconds }) >
-    DateTime.fromISO(member.lastHeartbeatRecv);
+  !member.health && DateTime.local().minus({ seconds: unhealthySeconds }) > DateTime.fromISO(member.lastHeartbeatRecv);
 
 module.exports = {
   init,

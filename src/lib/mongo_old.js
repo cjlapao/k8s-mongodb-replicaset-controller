@@ -147,12 +147,7 @@ const replSetReconfig = (db, rsConfig, force) => {
   return db.admin().command({ replSetReconfig: rsConfig, force: force }, {});
 };
 
-const addNewReplSetMembers = async (
-  db,
-  addrToAdd,
-  addrToRemove,
-  shouldForce
-) => {
+const addNewReplSetMembers = async (db, addrToAdd, addrToRemove, shouldForce) => {
   try {
     let rsConfig = await replSetGetConfig(db);
     removeDeadMembers(rsConfig, addrToRemove);
@@ -181,10 +176,7 @@ const addNewMembers = (rsConfig, addrsToAdd) => {
     let exists = false;
     for (const member of rsConfig.members) {
       if (member.host === addr) {
-        console.info(
-          'Host [%s] already exists in the Replicaset. Not adding...',
-          addr
-        );
+        console.info('Host [%s] already exists in the Replicaset. Not adding...', addr);
         exists = true;
         break;
       }

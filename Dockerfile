@@ -1,5 +1,5 @@
 FROM node:lts-slim
-LABEL maintainer Markus Wiegand <mail@morphy2k.dev>
+LABEL maintainer Carlos Lapao <mail@carloslapao.com>
 
 ENV NODE_ENV=production
 
@@ -9,6 +9,6 @@ COPY package.json package-lock.json /opt/k8s-mongo-sidecar/
 
 RUN npm install
 
-COPY ./src /opt/k8s-mongo-sidecar/src
+COPY ./build /opt/k8s-mongo-sidecar/
 
-CMD ["npm", "start"]
+CMD ["node", "index.js"]
