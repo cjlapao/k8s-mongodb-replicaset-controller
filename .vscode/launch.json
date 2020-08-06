@@ -11,7 +11,7 @@
       "env": {
         "KUBERNETES_KUBECONFIG": "C:\\Users\\carlos.lapao\\.kube\\config",
         "KUBERNETES_NAMESPACE": "mongodb",
-        "SIDECAR_SLEEP_SECONDS": "5",
+        "SIDECAR_SLEEP_SECONDS": "15",
         "KUBERNETES_POD_LABELS": "role=mongodb,environment=test",
         "KUBERNETES_SERVICE_NAME": "127.0.0.1",
         "MONGO_DEBUG": "true"

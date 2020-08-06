@@ -112,27 +112,27 @@ class Config {
             return;
         const servers = dns_1.getServers();
         if (!servers || !servers.length) {
-            console.warn(`dns: Didn't find any result when verifying the cluster domain ${clusterDomain}`);
+            // console.warn(`dns: Didn't find any result when verifying the cluster domain ${clusterDomain}`);
         }
         try {
             const dnsReverse = util_1.promisify(dns_1.reverse);
             const host = await dnsReverse(servers[0]);
             if (host.length < 1 || !host[0].endsWith(clusterDomain)) {
-                console.warn(`Possibly wrong cluster domain name! Detected ${clusterDomain} but expected similar to ${host}`);
+                // console.warn(`Possibly wrong cluster domain name! Detected ${clusterDomain} but expected similar to ${host}`);
             }
             else {
-                console.info(`The cluster domain ${clusterDomain} was successfully verified.`);
+                // console.info(`The cluster domain ${clusterDomain} was successfully verified.`);
             }
         }
         catch (err) {
-            console.warn(`Error occurred trying to verify the cluster domain ${clusterDomain}`);
+            // console.warn(`Error occurred trying to verify the cluster domain ${clusterDomain}`);
         }
         return;
     }
     getK8sMongoServiceName() {
         let serviceName = process.env.KUBERNETES_SERVICE_NAME;
         if (!serviceName) {
-            console.info(`No service was defined, using default "mongo" as the name`);
+            // console.info(`No service was defined, using default "mongo" as the name`);
             serviceName = 'mongo';
         }
         return serviceName;
@@ -140,16 +140,16 @@ class Config {
     getMongoPort() {
         let mongoPort = process.env.MONGO_PORT;
         if (!mongoPort) {
-            console.info(`No port was defined, using mongo default 27017 as the port`);
+            // console.info(`No port was defined, using mongo default 27017 as the port`);
             mongoPort = '27017';
         }
-        console.info('Using mongo port: %s', mongoPort);
+        // console.info('Using mongo port: %s', mongoPort);
         return mongoPort;
     }
     isConfigRs() {
         const configSvr = common_1.Common.stringToBool(process.env.MONGO_CONFIG_SVR || '');
         if (configSvr) {
-            console.info('ReplicaSet is configured as a configsvr');
+            // console.info('ReplicaSet is configured as a configsvr');
         }
         return configSvr;
     }

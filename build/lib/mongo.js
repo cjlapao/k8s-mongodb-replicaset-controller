@@ -27,8 +27,8 @@ class MongoManager {
         return {};
     }
     async getReplicaSetStatus() {
+        let status;
         if (this.db) {
-            let status;
             try {
                 console.log('Checking replicaSet status');
                 const result = await this.db.admin().command({ replSetGetStatus: {} }, {});
@@ -48,6 +48,10 @@ class MongoManager {
                 return status;
             }
         }
+        return (status = {
+            ok: 0,
+            code: -1,
+        });
     }
     async initReplicaSet(masterAddress) {
         if (this.db) {
@@ -82,21 +86,108 @@ class MongoManager {
             }
         }
     }
-    async UpdateReplicaSetMembers(toAdd, toRemove, force) {
+    async updateReplicaSetMembers(toAdd, toRemove, force) {
         try {
             const rsConfig = await this.getReplicaSetConfig();
             console.log(rsConfig);
+            if (rsConfig.members) {
+                const newPrimaryNode = this.electMasterMember(rsConfig.members, toAdd, toRemove);
+                await this.addMembersToReplicaSetConfig(rsConfig, toAdd, newPrimaryNode);
+                await this.removeMembersToReplicaSetConfig(rsConfig, toRemove);
+            }
         }
         catch (error) {
             Promise.reject(error);
         }
     }
-    async reconfigReplicaSet(replSetReconfig, force) {
-        if (this.db) {
-            console.info('replSetReconfig', replSetReconfig);
-            replSetReconfig.version++;
-            return await this.db.admin().command({ replSetReconfig, force }, {});
+    async addMembersToReplicaSetConfig(rsConfig, pods, masterNode) {
+        if (rsConfig.members) {
+            let max = 0;
+            max = this.getMaxId(rsConfig.members);
+            pods.forEach(async (pod) => {
+                var _a, _b;
+                if (pod.host) {
+                    if (pod.host === masterNode.host)
+                        pod.priority = masterNode.priority;
+                    const podInConfig = (_a = rsConfig.members) === null || _a === void 0 ? void 0 : _a.find((f) => f.host === pod.host);
+                    if (!podInConfig) {
+                        const newMemberCfg = {
+                            _id: ++max,
+                            host: pod.host,
+                            priority: (_b = pod.priority) !== null && _b !== void 0 ? _b : 1,
+                            votes: 1,
+                        };
+                        rsConfig.members.push(newMemberCfg);
+                        console.info(`Adding member to the replica:`, newMemberCfg);
+                        await this.reconfigReplicaSet(rsConfig);
+                    }
+                }
+            });
         }
+    }
+    async removeMembersToReplicaSetConfig(rsConfig, pods) {
+        console.debug(rsConfig.members);
+        pods.forEach(async (pod) => {
+            if (pod.host && rsConfig.members) {
+                console.debug(pod);
+                const podInConfigIndex = rsConfig.members.findIndex((f) => f.host === pod.host);
+                console.debug(podInConfigIndex);
+                if (podInConfigIndex > -1) {
+                    console.info(`removing member to the replica:`, rsConfig.members[podInConfigIndex]);
+                    rsConfig.members.splice(podInConfigIndex, 1);
+                    await this.reconfigReplicaSet(rsConfig);
+                }
+            }
+        });
+    }
+    async reconfigReplicaSet(replSetConfig, force) {
+        if (this.db) {
+            if (!force)
+                force = false;
+            else
+                force = true;
+            replSetConfig.version++;
+            await this.db.admin().command({ replSetReconfig: replSetConfig, force }, {});
+            console.info(`updating config with new configuration`);
+            replSetConfig = await this.getReplicaSetConfig();
+            console.debug(`rsConfig:`, replSetConfig);
+        }
+    }
+    electMasterMember(existing, toAdd, toRemove) {
+        const combinedList = [];
+        existing.forEach((e) => {
+            combinedList.push(e);
+        });
+        let max = this.getMaxId(combinedList);
+        const actualMasterPod = this.getMemberWithMostPriority(existing);
+        toAdd.forEach((pod) => {
+            if (pod.host) {
+                combinedList.push({
+                    _id: ++max,
+                    host: pod.host,
+                    priority: 1,
+                    votes: 1,
+                });
+            }
+        });
+        toRemove.forEach((pod) => {
+            if (pod.host) {
+                const podInConfigIndex = combinedList.findIndex((f) => f.host === pod.host);
+                if (podInConfigIndex > -1) {
+                    combinedList.splice(podInConfigIndex, 1);
+                }
+            }
+        });
+        if (actualMasterPod.host !== combinedList[0].host) {
+            // every pod will vote for the master pod, fair :)
+            combinedList[0].priority = existing.length + 1;
+            const isStillMember = combinedList.findIndex((f) => f.host === actualMasterPod.host);
+            if (isStillMember && isStillMember > 0) {
+                combinedList[isStillMember].priority = 0;
+            }
+        }
+        const newMasterPod = this.getMemberWithMostPriority(combinedList);
+        return newMasterPod;
     }
     getDatabase(databaseName) {
         if (this.client) {
@@ -171,6 +262,26 @@ class MongoManager {
         catch (error) {
             return Promise.reject(error);
         }
+    }
+    getMemberWithMostPriority(pods) {
+        pods.sort((a, b) => {
+            var _a, _b;
+            const aPriority = (_a = a.priority) !== null && _a !== void 0 ? _a : 0;
+            const bPriority = (_b = b.priority) !== null && _b !== void 0 ? _b : 0;
+            if (!aPriority < !bPriority)
+                return -1;
+            if (!aPriority > !bPriority)
+                return 1;
+            return 0; // Shouldn't get here... all pods should have different dates
+        });
+        return pods[0];
+    }
+    getMaxId(nodes) {
+        let max = 0;
+        if (nodes.length > 0) {
+            max = Math.max.apply(null, nodes === null || nodes === void 0 ? void 0 : nodes.map((m) => m._id));
+        }
+        return max;
     }
 }
 exports.MongoManager = MongoManager;

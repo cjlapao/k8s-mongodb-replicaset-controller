@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mongo-test
+  namespace: mongodb
+  labels:
+    role: myrole
+spec:
+  serviceAccountName: mongodb-sa
+  containers:
+    - name: mongo-test
+      image: cjlapao/mongodb-sidecar:latest
+      env:
+        - name: KUBERNETES_POD_LABELS
+          value: "role=mongodb,environment=test"
+        - name: MONGODB_USERNAME
+          value: admin
+        - name: MONGODB_PASSWORD
+          value: password
+        - name: KUBERNETES_SERVICE_NAME
+          value: mongodb-headless
+        

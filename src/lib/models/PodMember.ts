@@ -6,4 +6,6 @@ export interface PodMember {
   ip?: string;
   isRunning?: boolean;
   isPrimary?: boolean;
+  priority?: number;
+  change?: 'ADD' | 'REMOVE' | 'NONE';
 }

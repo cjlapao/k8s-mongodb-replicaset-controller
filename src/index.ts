@@ -1,3 +1,14 @@
+declare global {
+  interface Array<T> {
+    max(): number;
+    min(): number;
+  }
+
+  interface Date {
+    addHours(h: number): Date;
+  }
+}
+
 import { Worker } from './lib/worker';
 
 console.log('testing');
