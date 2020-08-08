@@ -1,14 +1,12 @@
 apiVersion: v1
 kind: Pod
 metadata:
-  name: mongo-test
-  namespace: mongodb
-  labels:
-    role: myrole
+  name: "{{NAME_OF_POD}}"
+  namespace: "{{NAMESPACE}}"
 spec:
-  serviceAccountName: mongodb-sa
+  serviceAccountName: "{{SERVICE_ACCOUNT}}"
   containers:
-    - name: mongo-test
+    - name: "{{NAME_OF_CONTAINER}}"
       image: cjlapao/mongodb-sidecar:latest
       env:
         - name: KUBERNETES_POD_LABELS

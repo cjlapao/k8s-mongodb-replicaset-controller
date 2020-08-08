@@ -12,14 +12,13 @@ export class PodHelper {
    */
   public electMasterPod(pods: PodMember[]) {
     pods.sort((a, b) => {
-      const aDate = a.pod?.metadata?.creationTimestamp;
-      const bDate = b.pod?.metadata?.creationTimestamp;
+      const aDate = a.k8sPod?.metadata?.creationTimestamp;
+      const bDate = b.k8sPod?.metadata?.creationTimestamp;
       if (!aDate < !bDate) return -1;
       if (!aDate > !bDate) return 1;
       return 0; // Shouldn't get here... all pods should have different dates
     });
-    console.log(`${pods[0].pod?.metadata?.name} -> ${pods[0].pod?.metadata?.creationTimestamp}`);
-    return this.getPodAddress(pods[0].pod);
+    return this.getPodAddress(pods[0].k8sPod);
   }
 
   /**
@@ -35,6 +34,12 @@ export class PodHelper {
     if (!address) {
       console.warn(`Could not find the stable network address for the pod ${pod?.metadata?.name}`);
       address = this.getPodIpAddressAndPort(pod);
+    }
+    if (this.config.mongoDbExternalDomain) {
+      const urlSegments = address.split('.');
+      if (urlSegments.length > 0) {
+        address = `${urlSegments[0]}.${this.config.mongoDbExternalDomain}`;
+      }
     }
 
     return address;
@@ -70,7 +75,8 @@ export class PodHelper {
   public toPodMember(pod: V1Pod | undefined): PodMember {
     if (pod) {
       return {
-        pod,
+        change: 'ADD',
+        k8sPod: pod,
         ip: pod.status?.podIP,
         host: this.getPodAddress(pod),
         isRunning: pod.status?.phase === 'Running' && pod.status?.podIP ? true : false,

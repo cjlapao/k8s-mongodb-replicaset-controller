@@ -4,6 +4,7 @@ exports.MongoManager = void 0;
 const util_1 = require("util");
 const mongodb_1 = require("mongodb");
 const fs_1 = require("fs");
+const logger_1 = require("./services/logger");
 class MongoManager {
     constructor(config) {
         this.config = config;
@@ -19,19 +20,18 @@ class MongoManager {
         if (this.db) {
             return await this.db
                 .admin()
-                .command({ replSetGetConfig: 1 }, {})
+                .command({ replSetGetConfig: 1 }, { readPreference: 'primary' })
                 .then((results) => {
                 return results.config;
             });
         }
-        return {};
     }
     async getReplicaSetStatus() {
         let status;
         if (this.db) {
             try {
                 console.log('Checking replicaSet status');
-                const result = await this.db.admin().command({ replSetGetStatus: {} }, {});
+                const result = await this.db.admin().command({ replSetGetStatus: {} }, { readPreference: 'primary' });
                 status = {
                     set: result.set,
                     ok: result.ok,
@@ -40,46 +40,57 @@ class MongoManager {
                 };
                 return status;
             }
-            catch (err) {
-                status = {
-                    ok: 0,
-                    code: err.code,
-                };
+            catch (error) {
+                if (error.code && error.code === 94) {
+                    status = {
+                        ok: 0,
+                        code: error.code,
+                    };
+                }
+                else {
+                    logger_1.Logger.error(`There was an error collecting the ReplicaSetStatus`, error);
+                    status = {
+                        ok: -1,
+                        code: error.code,
+                    };
+                }
+                if (error.MongoError && error.MongoError.includes('Topology is closed, please connect')) {
+                    await this.init(this.config.k8sMongoServiceName);
+                }
                 return status;
             }
         }
-        return (status = {
-            ok: 0,
-            code: -1,
-        });
     }
-    async initReplicaSet(masterAddress) {
+    async initReplicaSet(pods) {
         if (this.db) {
-            if (!masterAddress) {
-                throw new Error(`The master node address ${masterAddress} is invalid`);
+            if (!pods || pods.length === 0) {
+                throw new Error(`there is no pods to initiate`);
             }
             try {
-                await this.db.admin().command({ replSetInitiate: {} }, {});
+                // building the initiate command
+                const members = [];
+                let i = 0;
+                pods.forEach((pod) => {
+                    logger_1.Logger.info(`Adding ${pod.host} to the initial ReplicaSet`);
+                    members.push({
+                        _id: i,
+                        host: pod.host,
+                    });
+                    i++;
+                });
+                const config = {
+                    _id: 'rs0',
+                    members,
+                };
+                await this.db.admin().command({ replSetInitiate: config }, { readPreference: 'primary' });
                 // We need to hack in the fix where the host is set to the hostname which isn't reachable from other hosts
-                const rsConfig = await this.getReplicaSetConfig();
-                console.info('initial rsConfig is', rsConfig);
-                rsConfig.configsvr = this.config.isConfigRS;
-                rsConfig.members[0].host = masterAddress;
-                const times = 20;
-                const interval = 500;
-                const wait = (time) => new Promise((resolve) => setTimeout(resolve, time));
-                let tries = 0;
-                while (tries < times) {
-                    try {
-                        return await this.reconfigReplicaSet(rsConfig, false);
-                    }
-                    catch (err) {
-                        await wait(interval);
-                        tries++;
-                        if (tries >= times)
-                            return Promise.reject(err);
-                    }
-                }
+                return await this.getReplicaSetConfig();
+                // if (rsConfig) {
+                //   Logger.info(`Initial ReplicaSet config:`, rsConfig);
+                //   rsConfig.configsvr = this.config.isConfigRS;
+                //   rsConfig.members[0].host = masterAddress;
+                //   return await this.reconfigReplicaSet(rsConfig, false);
+                // }
             }
             catch (err) {
                 return Promise.reject(err);
@@ -90,10 +101,12 @@ class MongoManager {
         try {
             const rsConfig = await this.getReplicaSetConfig();
             console.log(rsConfig);
-            if (rsConfig.members) {
-                const newPrimaryNode = this.electMasterMember(rsConfig.members, toAdd, toRemove);
-                await this.addMembersToReplicaSetConfig(rsConfig, toAdd, newPrimaryNode);
-                await this.removeMembersToReplicaSetConfig(rsConfig, toRemove);
+            if (rsConfig) {
+                if (rsConfig.members) {
+                    const newPrimaryNode = this.electMasterMember(rsConfig.members, toAdd, toRemove);
+                    await this.addMembersToReplicaSetConfig(rsConfig, toAdd, newPrimaryNode);
+                    await this.removeMembersToReplicaSetConfig(rsConfig, toRemove);
+                }
             }
         }
         catch (error) {
@@ -141,16 +154,43 @@ class MongoManager {
         });
     }
     async reconfigReplicaSet(replSetConfig, force) {
+        var _a;
         if (this.db) {
-            if (!force)
-                force = false;
-            else
-                force = true;
-            replSetConfig.version++;
-            await this.db.admin().command({ replSetReconfig: replSetConfig, force }, {});
-            console.info(`updating config with new configuration`);
-            replSetConfig = await this.getReplicaSetConfig();
-            console.debug(`rsConfig:`, replSetConfig);
+            try {
+                const times = 20;
+                const interval = 500;
+                const wait = (time) => new Promise((resolve) => setTimeout(resolve, time));
+                let tries = 0;
+                while (tries < times) {
+                    try {
+                        if (!force)
+                            force = false;
+                        else
+                            force = true;
+                        if (replSetConfig) {
+                            replSetConfig.version++;
+                            await this.db.admin().command({ replSetReconfig: replSetConfig, force }, { readPreference: 'primary' });
+                            replSetConfig = await this.getReplicaSetConfig();
+                            return replSetConfig;
+                        }
+                    }
+                    catch (error) {
+                        logger_1.Logger.error('error 0', error);
+                        if (error.MongoError.includes('PRIMARY. Current state SECONDARY')) {
+                            await ((_a = this.client) === null || _a === void 0 ? void 0 : _a.close());
+                            this.client = await this.init(this.config.k8sMongoServiceName);
+                        }
+                        await wait(interval);
+                        tries++;
+                        if (tries >= times)
+                            return Promise.reject(error);
+                    }
+                }
+            }
+            catch (error) {
+                logger_1.Logger.error('error 1', error);
+                return Promise.reject(error);
+            }
         }
     }
     electMasterMember(existing, toAdd, toRemove) {
@@ -205,6 +245,10 @@ class MongoManager {
             checkServerIdentity: this.config.mongoTLSServerIdentityCheck,
             useNewUrlParser: true,
             useUnifiedTopology: true,
+            reconnectInterval: 3000,
+            poolSize: 10,
+            bufferMaxEntries: 0,
+            reconnectTries: Number.MAX_VALUE,
         };
         try {
             if (this.config.mongoTLS) {

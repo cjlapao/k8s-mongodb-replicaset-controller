@@ -1,11 +1,15 @@
+import { ReplicaSetStateMember } from './replicaset-config';
 import { V1Pod } from '@kubernetes/client-node';
 
 export interface PodMember {
-  pod?: V1Pod;
+  id?: number;
+  k8sPod?: V1Pod;
+  mongoNode?: ReplicaSetStateMember;
   host?: string;
   ip?: string;
   isRunning?: boolean;
   isPrimary?: boolean;
   priority?: number;
-  change?: 'ADD' | 'REMOVE' | 'NONE';
+  votes?: number;
+  change?: 'ADD' | 'REMOVE' | 'UNCHANGED';
 }

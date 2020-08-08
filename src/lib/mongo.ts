@@ -1,10 +1,16 @@
-import { PodHelper } from './helpers/pods';
-import { ReplicaSetConfig, ReplicaSetMember, CertificatesStore, ReplicaSetStatus } from './models/replicaset-config';
+import {
+  ReplicaSetConfig,
+  ReplicaSetMember,
+  CertificatesStore,
+  ReplicaSetStatus,
+  ReplicaSetStateMember,
+} from './models/replicaset-config';
 import { Config } from './config';
-import { promisify, isRegExp } from 'util';
+import { promisify } from 'util';
 import { MongoClient, MongoClientOptions, Db } from 'mongodb';
-import { readFile, stat } from 'fs';
+import { readFile } from 'fs';
 import { PodMember } from './models/PodMember';
+import { Logger } from './services/logger';
 
 export class MongoManager {
   private localhost = '127.0.0.1';
@@ -25,57 +31,83 @@ export class MongoManager {
     if (this.db) {
       return await this.db
         .admin()
-        .command({ replSetGetConfig: 1 }, {})
+        .command({ replSetGetConfig: 1 }, { readPreference: 'primary' })
         .then((results) => {
           return results.config as ReplicaSetConfig;
         });
     }
-    return {} as ReplicaSetConfig;
   }
 
-  public async getReplicaSetStatus(): Promise<ReplicaSetStatus> {
+  public async getReplicaSetStatus() {
     let status: ReplicaSetStatus;
     if (this.db) {
       try {
         console.log('Checking replicaSet status');
-        const result = await this.db.admin().command({ replSetGetStatus: {} }, {});
+        const result = await this.db.admin().command({ replSetGetStatus: {} }, { readPreference: 'primary' });
         status = {
           set: result.set,
           ok: result.ok,
           code: 0,
-          members: result.members ? result.members : [],
+          members: result.members ? (result.members as ReplicaSetStateMember[]) : [],
         };
         return status;
-      } catch (err) {
-        status = {
-          ok: 0,
-          code: err.code,
-        };
+      } catch (error) {
+        if (error.code && error.code === 94) {
+          status = {
+            ok: 0,
+            code: error.code,
+          };
+        } else {
+          Logger.error(`There was an error collecting the ReplicaSetStatus`, error);
+          status = {
+            ok: -1,
+            code: error.code,
+          };
+        }
+
+        if (error.MongoError) {
+          await this.init(this.config.k8sMongoServiceName);
+        }
         return status;
       }
     }
-    return (status = {
-      ok: 0,
-      code: -1,
-    });
   }
 
-  public async initReplicaSet(masterAddress: string) {
+  public async initReplicaSet(pods: PodMember[]) {
     if (this.db) {
-      if (!masterAddress) {
-        throw new Error(`The master node address ${masterAddress} is invalid`);
+      if (!pods || pods.length === 0) {
+        throw new Error(`there is no pods to initiate`);
       }
 
       try {
-        await this.db.admin().command({ replSetInitiate: {} }, {});
+        // building the initiate command
+        const members: any[] = [];
+        let i = 0;
+        pods.forEach((pod) => {
+          Logger.info(`Adding ${pod.host} to the initial ReplicaSet`);
+          members.push({
+            _id: i,
+            host: pod.host,
+          });
+          i++;
+        });
+        const config = {
+          _id: 'rs0',
+          members,
+        };
 
-        // We need to hack in the fix where the host is set to the hostname which isn't reachable from other hosts
-        const rsConfig = await this.getReplicaSetConfig();
+        await this.db.admin().command({ replSetInitiate: config }, { readPreference: 'primary' });
 
-        console.info('initial rsConfig is', rsConfig);
-        rsConfig.configsvr = this.config.isConfigRS;
-        rsConfig.members[0].host = masterAddress;
+        return await this.getReplicaSetConfig();
+      } catch (err) {
+        return Promise.reject(err);
+      }
+    }
+  }
 
+  public async reconfigReplicaSet(replSetConfig: ReplicaSetConfig | undefined, force?: boolean) {
+    if (this.db) {
+      try {
         const times = 20;
         const interval = 500;
         const wait = (time) => new Promise((resolve) => setTimeout(resolve, time));
@@ -83,129 +115,30 @@ export class MongoManager {
         let tries = 0;
         while (tries < times) {
           try {
-            return await this.reconfigReplicaSet(rsConfig, false);
-          } catch (err) {
+            if (!force) force = false;
+            else force = true;
+            if (replSetConfig) {
+              replSetConfig.version++;
+              await this.db.admin().command({ replSetReconfig: replSetConfig, force }, { readPreference: 'primary' });
+              replSetConfig = await this.getReplicaSetConfig();
+              return replSetConfig;
+            }
+          } catch (error) {
+            Logger.error('error 0', error);
+            if (error.MongoError) {
+              await this.client?.close();
+              this.client = await this.init(this.config.k8sMongoServiceName);
+            }
             await wait(interval);
             tries++;
-            if (tries >= times) return Promise.reject(err);
+            if (tries >= times) return Promise.reject(error);
           }
         }
-      } catch (err) {
-        return Promise.reject(err);
+      } catch (error) {
+        Logger.error('error 1', error);
+        return Promise.reject(error);
       }
     }
-  }
-
-  public async updateReplicaSetMembers(toAdd: PodMember[], toRemove: PodMember[], force: boolean) {
-    try {
-      const rsConfig = await this.getReplicaSetConfig();
-      console.log(rsConfig);
-      if (rsConfig.members) {
-        const newPrimaryNode = this.electMasterMember(rsConfig.members, toAdd, toRemove);
-        await this.addMembersToReplicaSetConfig(rsConfig, toAdd, newPrimaryNode);
-        await this.removeMembersToReplicaSetConfig(rsConfig, toRemove);
-      }
-    } catch (error) {
-      Promise.reject(error);
-    }
-  }
-
-  private async addMembersToReplicaSetConfig(
-    rsConfig: ReplicaSetConfig,
-    pods: PodMember[],
-    masterNode: ReplicaSetMember
-  ) {
-    if (rsConfig.members) {
-      let max = 0;
-      max = this.getMaxId(rsConfig.members);
-      pods.forEach(async (pod) => {
-        if (pod.host) {
-          if (pod.host === masterNode.host) pod.priority = masterNode.priority;
-          const podInConfig = rsConfig.members?.find((f) => f.host === pod.host);
-          if (!podInConfig) {
-            const newMemberCfg: ReplicaSetMember = {
-              _id: ++max,
-              host: pod.host,
-              priority: pod.priority ?? 1,
-              votes: 1,
-            };
-            rsConfig.members.push(newMemberCfg);
-            console.info(`Adding member to the replica:`, newMemberCfg);
-            await this.reconfigReplicaSet(rsConfig);
-          }
-        }
-      });
-    }
-  }
-
-  private async removeMembersToReplicaSetConfig(rsConfig: ReplicaSetConfig, pods: PodMember[]) {
-    console.debug(rsConfig.members);
-    pods.forEach(async (pod) => {
-      if (pod.host && rsConfig.members) {
-        console.debug(pod);
-        const podInConfigIndex = rsConfig.members.findIndex((f) => f.host === pod.host);
-        console.debug(podInConfigIndex);
-        if (podInConfigIndex > -1) {
-          console.info(`removing member to the replica:`, rsConfig.members[podInConfigIndex]);
-          rsConfig.members.splice(podInConfigIndex, 1);
-          await this.reconfigReplicaSet(rsConfig);
-        }
-      }
-    });
-  }
-
-  private async reconfigReplicaSet(replSetConfig: ReplicaSetConfig, force?: boolean) {
-    if (this.db) {
-      if (!force) force = false;
-      else force = true;
-      replSetConfig.version++;
-      await this.db.admin().command({ replSetReconfig: replSetConfig, force }, {});
-      console.info(`updating config with new configuration`);
-      replSetConfig = await this.getReplicaSetConfig();
-      console.debug(`rsConfig:`, replSetConfig);
-    }
-  }
-
-  private electMasterMember(existing: ReplicaSetMember[], toAdd: PodMember[], toRemove: PodMember[]) {
-    const combinedList: ReplicaSetMember[] = [];
-    existing.forEach((e) => {
-      combinedList.push(e);
-    });
-
-    let max = this.getMaxId(combinedList);
-    const actualMasterPod = this.getMemberWithMostPriority(existing);
-
-    toAdd.forEach((pod) => {
-      if (pod.host) {
-        combinedList.push({
-          _id: ++max,
-          host: pod.host,
-          priority: 1,
-          votes: 1,
-        });
-      }
-    });
-
-    toRemove.forEach((pod) => {
-      if (pod.host) {
-        const podInConfigIndex = combinedList.findIndex((f) => f.host === pod.host);
-        if (podInConfigIndex > -1) {
-          combinedList.splice(podInConfigIndex, 1);
-        }
-      }
-    });
-
-    if (actualMasterPod.host !== combinedList[0].host) {
-      // every pod will vote for the master pod, fair :)
-      combinedList[0].priority = existing.length + 1;
-      const isStillMember = combinedList.findIndex((f) => f.host === actualMasterPod.host);
-      if (isStillMember && isStillMember > 0) {
-        combinedList[isStillMember].priority = 0;
-      }
-    }
-
-    const newMasterPod = this.getMemberWithMostPriority(combinedList);
-    return newMasterPod;
   }
 
   public getDatabase(databaseName: string) {
@@ -225,6 +158,10 @@ export class MongoManager {
       checkServerIdentity: this.config.mongoTLSServerIdentityCheck,
       useNewUrlParser: true,
       useUnifiedTopology: true,
+      reconnectInterval: 3000,
+      poolSize: 10,
+      bufferMaxEntries: 0,
+      reconnectTries: Number.MAX_VALUE,
     };
     try {
       if (this.config.mongoTLS) {
@@ -279,17 +216,6 @@ export class MongoManager {
     } catch (error) {
       return Promise.reject(error);
     }
-  }
-
-  private getMemberWithMostPriority(pods: ReplicaSetMember[]) {
-    pods.sort((a, b) => {
-      const aPriority = a.priority ?? 0;
-      const bPriority = b.priority ?? 0;
-      if (!aPriority < !bPriority) return -1;
-      if (!aPriority > !bPriority) return 1;
-      return 0; // Shouldn't get here... all pods should have different dates
-    });
-    return pods[0];
   }
 
   private getMaxId(nodes: ReplicaSetMember[]) {

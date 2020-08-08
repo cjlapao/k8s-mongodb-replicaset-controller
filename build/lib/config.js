@@ -20,6 +20,9 @@ class Config {
     get k8sClusterDomain() {
         return this.getK8sClusterDomain();
     }
+    get mongoDbExternalDomain() {
+        return process.env.MONGO_EXTERNAL_ADDRESS ? `${process.env.MONGO_EXTERNAL_ADDRESS}:${this.mongoPort}` : undefined;
+    }
     get k8sROServiceAddress() {
         return this.getK8sRoServiceAddress();
     }
@@ -72,11 +75,11 @@ class Config {
         return common_1.Common.stringToBool(process.env.MONGO_TLS_IDENTITY_CHECK || '');
     }
     get loopSleepSeconds() {
-        let result = 5;
+        let result = 20;
         if (process.env.SIDECAR_SLEEP_SECONDS) {
             result = Number.parseInt(process.env.SIDECAR_SLEEP_SECONDS, 10);
             if (!result || result < 0) {
-                result = 5;
+                result = 20;
             }
         }
         return result;

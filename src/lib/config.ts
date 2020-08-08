@@ -20,6 +20,10 @@ export class Config {
     return this.getK8sClusterDomain();
   }
 
+  get mongoDbExternalDomain(): string | undefined {
+    return process.env.MONGO_EXTERNAL_ADDRESS ? `${process.env.MONGO_EXTERNAL_ADDRESS}:${this.mongoPort}` : undefined;
+  }
+
   get k8sROServiceAddress(): string | undefined {
     return this.getK8sRoServiceAddress();
   }
@@ -89,11 +93,11 @@ export class Config {
   }
 
   get loopSleepSeconds(): number {
-    let result = 5;
+    let result = 20;
     if (process.env.SIDECAR_SLEEP_SECONDS) {
       result = Number.parseInt(process.env.SIDECAR_SLEEP_SECONDS, 10);
       if (!result || result < 0) {
-        result = 5;
+        result = 20;
       }
     }
 

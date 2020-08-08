@@ -1,3 +1,5 @@
+import { PodMember } from './PodMember';
+
 export interface ReplicaSetConfig {
   _id: string;
   version: number;
@@ -45,5 +47,31 @@ export interface ReplicaSetStatus {
   set?: string;
   ok?: number;
   code?: number;
-  members?: [];
+  members?: ReplicaSetStateMember[];
+}
+
+export interface ReplicaSetState {
+  set: string;
+  ok: number;
+  code: number;
+  members: ReplicaSetStateMember[];
+}
+
+export interface ReplicaSetStateMember {
+  _id: number;
+  name: string;
+  health: number;
+  state: number;
+  stateStr: string;
+  uptime: number;
+  optimeDate: string;
+  syncSourceHost: string;
+  syncSourceId: number;
+  infoMessage: string;
+  electionTime: string;
+  electionDate: string;
+  configVersion: number;
+  configTerm: number;
+  self: boolean;
+  lastHeartbeatMessage: string;
 }
