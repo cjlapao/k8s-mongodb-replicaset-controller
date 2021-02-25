@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{NAME_OF_POD}}"
+  namespace: "{{NAMESPACE}}"
+spec:
+  serviceAccountName: "{{SERVICE_ACCOUNT}}"
+  containers:
+    - name: "{{NAME_OF_CONTAINER}}"
+      image: cjlapao/mongodb-sidecar:latest
+      env:
+        - name: KUBERNETES_POD_LABELS
+          value: "role=mongodb,environment=test"
+        - name: MONGODB_USERNAME
+          value: admin
+        - name: MONGODB_PASSWORD
+          value: password
+        - name: KUBERNETES_SERVICE_NAME
+          value: mongodb-headless
+        

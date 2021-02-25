@@ -1,0 +1,74 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "type": "npm",
+      "script": "build",
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "silent",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": true,
+        "clear": false
+      },
+      "problemMatcher": [],
+      "label": "npm: build",
+      "detail": "rimraf ./build && tsc"
+    },
+    {
+      "type": "npm",
+      "script": "build-docker",
+      "group": "build",
+      "isBackground": true,
+      "presentation": {
+        "echo": true,
+        "reveal": "silent",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": true,
+        "clear": false
+      },
+      "problemMatcher": [],
+      "label": "npm: build-docker",
+      "detail": "docker build --tag cjlapao/mongodb-sidecar:latest .",
+      "dependsOn": ["npm: build"]
+    },
+    {
+      "type": "npm",
+      "script": "publish-docker",
+      "group": "build",
+      "isBackground": true,
+      "presentation": {
+        "echo": true,
+        "reveal": "silent",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": true,
+        "clear": false
+      },
+      "problemMatcher": [],
+      "label": "npm: publish-docker",
+      "detail": "docker push cjlapao/mongodb-sidecar:latest",
+      "dependsOn": ["npm: build-docker"]
+    },
+    {
+      "type": "npm",
+      "script": "pretest",
+      "group": "build",
+      "isBackground": true,
+      "presentation": {
+        "echo": true,
+        "reveal": "silent",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": true,
+        "clear": false
+      },
+      "problemMatcher": [],
+      "label": "npm: pretest",
+      "detail": "npm run lint"
+    }
+  ]
+}
