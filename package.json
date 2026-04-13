@@ -51,7 +51,7 @@
     "@types/luxon": "0.5.2",
     "@types/node": "12.12.2",
     "@typescript-eslint/eslint-plugin": "3.8.0",
-    "eslint": "7.6.0",
+    "eslint": "7.32.0",
     "prettier": "2.0.5",
     "rimraf": "^3.0.2",
     "tslint": "6.1.3",
